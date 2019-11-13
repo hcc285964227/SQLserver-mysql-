@@ -1,0 +1,294 @@
+#!/usr/bin/env python
+# coding: utf-8
+import pymysql
+import pymssql
+import json
+import sys
+import os
+import socket
+import hashlib
+import threading
+import time
+import datetime
+
+ipname=socket.gethostname()
+ipname=socket.gethostbyname(ipname)
+
+  
+
+reload(sys)  
+
+sys.setdefaultencoding('utf8')     
+
+
+def is_valid_date(strdate):
+    '''判断是否是一个有效的日期字符串'''
+    try:
+        if ":" in strdate:
+            time.strptime(strdate, "%Y-%m-%d %H:%M:%S")
+        return True
+    except:
+        return False
+
+
+
+def mysql_conn(minid,maxid):
+        global texit
+        while minid<=maxid:
+                if texit>0:
+                        "获取退出要求，退出"
+                        break
+                ccid=minid+2000
+                if ccid<=maxid:
+                        sql = "SELECT "+cln_list_str.replace("isnull(","ifnull(")+" FROM "+table_name+" where "+key_id+">="+str(minid)+ " and "+key_id+"<"+str(ccid)+" order by "+key_id
+                else:
+                        sql = "SELECT "+cln_list_str.replace("isnull(","ifnull(")+" FROM "+table_name+" where "+key_id+">="+str(minid)+ " and "+key_id+"<"+str(maxid)+" order by "+key_id
+                cur_mysql=conn_mysql.cursor()
+                cur_mysql.execute(sql)                        # 执行SQL查询
+                data = cur_mysql.fetchall()                   # 查询结果给data
+                fields = cur_mysql.description                # 获取查询结果中列的字段名
+                cur_mysql.close()
+
+                data_sql=''
+
+                if not data :
+                        sql = "SELECT "+key_id+" FROM "+table_name+" where "+key_id+">="+str(minid)+ " order by "+key_id+ " limit 1"
+                        cur_mysql=conn_mysql.cursor()
+                        cur_mysql.execute(sql)                        # 执行SQL查询
+                        data2 = cur_mysql.fetchone()                   # 查询结果给data
+                        fields = cur_mysql.description                # 获取查询结果中列的字段名
+                        cur_mysql.close()
+                        if data2:
+                                minid=data2[0]
+                                continue
+                        else:
+                                minid=9900000000000
+                                #mysql_data.append(str(minid))
+                                break 
+                for row in data:
+                        jsondata=''
+                        for j in range(0,len(fields)):
+                                jsondata=jsondata+str(row[j])
+
+                        m= hashlib.md5()
+                        m.update(jsondata)
+                        m_back = m.hexdigest()
+                        rj=str(row[0])+"               : "+m_back
+                        mysql_data.append(rj)
+                minid=minid+2000
+        conn_mysql.close()
+        mysql_data.append('9900000000000')
+        if minid>maxid:
+                print "MYSQL结束ID",maxid
+        else:
+                print "MYSQL结束ID",minid
+
+def mssql_conn(minid,maxid):
+        global texit
+        while minid<=maxid:
+
+                if texit>0:
+                        "获取退出要求，退出"
+                        break
+                ccid=minid+2000
+                if ccid<=maxid:
+                        sql = "SELECT "+cln_list_str2+" FROM "+table_name+" where "+key_id+">="+str(minid)+ " and "+key_id+"<"+str(ccid)+" order by "+key_id
+                else:
+                        sql = "SELECT "+cln_list_str2+" FROM "+table_name+" where "+key_id+">="+str(minid)+ " and "+key_id+"<"+str(maxid)+" order by "+key_id
+                cur_mssql=conn_mssql.cursor()
+                cur_mssql.execute(sql)                        # 执行SQL查询
+                data = cur_mssql.fetchall()                   # 查询结果给data
+                fields = cur_mssql.description                # 获取查询结果中列的字段名
+                cur_mssql.close()
+                #conn_mssql.close()
+
+                data_sql=''
+
+                if not data :
+                        sql = "SELECT top 1 "+key_id+" FROM "+table_name+" where "+key_id+">="+str(minid)+ " order by "+key_id
+                        cur_mssql=conn_mssql.cursor()
+                        cur_mssql.execute(sql)                        # 执行SQL查询
+                        data2 = cur_mssql.fetchone()                   # 查询结果给data
+                        fields = cur_mssql.description                # 获取查询结果中列的字段名
+                        cur_mssql.close()
+                        if data2:
+                                minid=data2[0]
+                                continue
+                        else:
+                                minid=9900000000000
+                                #mssql_data.append(str(minid))
+                                break 
+                for row in data:
+                        jsondata=''
+                        for j in range(0,len(fields)):
+                                if type(row[j]) ==datetime.datetime:
+                                        jsondata=jsondata+row[j].strftime("%Y-%m-%d %H:%M:%S.%f")[0:23]
+                                else:
+                                        jsondata=jsondata+str(row[j])
+                        #data_sql=data_sql+jsondata
+                        m= hashlib.md5()
+                        m.update(jsondata)
+                        m_back = m.hexdigest()
+                        rj=str(row[0])+"               : "+m_back
+                        mssql_data.append(rj)
+                minid=minid+2000
+        conn_mssql.close()
+        mssql_data.append('9900000000000')
+        if minid>maxid:
+                print "SQLSERVER结束ID",maxid
+        else:
+                print "SQLSERVER结束ID",minid
+
+
+def compare():
+        global texit
+        rr=1
+        ds=0
+        stop=0
+        j=0
+        i=0
+        iflag=0
+        jflag=0
+        print "开始:",time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())  
+        while rr==1:
+
+                time.sleep(1)
+                while i<=len(mysql_data)-1 or j<=len(mssql_data)-1:
+
+                        if len(mysql_data)-1<i or len(mssql_data)-1<j:
+                                time.sleep(1)
+                        if i>len(mysql_data)-1 or j>len(mssql_data)-1:
+                                break
+                        if mysql_data[i]==mssql_data[j]:
+                                #print "mysql",mysql_data[j],"mssql",mssql_data[j],"相同"
+                                i=i+1
+                                j=j+1
+                                stop=0
+                        elif int(mysql_data[i][0:12])<int(mssql_data[j][0:12]):
+                                iflag=-1
+                                dataj=int(mysql_data[i][0:12])
+                                i=i+1
+                                stop=0
+                        elif int(mysql_data[i][0:12])>int(mssql_data[j][0:12]):
+                                jflag=-1
+                                datai=int(mssql_data[i][0:12])
+                                j=j+1
+                                stop=0
+                        else:
+                                print "mysql",mysql_data[i],"mssql",mssql_data[j],"不同"
+                                i=i+1
+                                j=j+1
+                                stop=0
+                                ds=ds+1
+
+                        if int(eflag)>0 and ds>0:
+                                texit=1
+                                print "遇见不一致数据就退出，不再对比后面数据"
+                                return
+
+
+                        if iflag==-1 and int(mssql_data[j][0:12])>dataj :
+                                iflag=0
+                                print "mysql: " ,dataj,"____  mssql: ","不存在"
+                                dataj=999999999999
+                                ds=ds+1
+
+                        if jflag==-1 and int(mysql_data[i][0:12])>datai :
+                                jflag=0
+                                print "mysql: ","不存在","____   mssql: ",datai
+                                datai=999999999999
+                                ds=ds+1
+
+
+                       
+                
+                stop=stop+1
+                time.sleep(0.2)
+
+
+                if stop>3:
+                        print "结束:",time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+                        print "mysql条数:",len(mysql_data)-1," mssql条数:",len(mssql_data)-1
+                        texit=1
+                        rr=0
+                        print "总不一致数据量: ",ds
+                        print "退出"
+                        return
+
+
+
+
+
+
+
+
+
+texit=0
+
+
+print(sys.argv[1],sys.argv[2],sys.argv[3],sys.argv[4],sys.argv[5],sys.argv[6])
+
+# 表名 最小ID 最大ID  是否查询到不一致就退出(0不退出，1退出)
+
+db_name=sys.argv[1]
+table_name=sys.argv[2]
+key_id =sys.argv[3]
+minid=int(sys.argv[4])
+maxid=int(sys.argv[5])
+eflag=sys.argv[6]
+remove_column=sys.argv[7]
+
+
+
+# 定义查询SQL语句
+
+
+
+
+Loginfo = {'USER':'', 'PSWD':'', 'HOST':'', 'PORT':5306,'db':db_name}
+Loginfo2 = {'USER':'', 'PSWD':'', 'HOST':'', 'PORT':3433,'database':db_name}
+
+mysql_data=[]
+mssql_data=[]
+
+conn_mysql=pymysql.connect(host=Loginfo['HOST'],user=Loginfo['USER'],passwd=Loginfo['PSWD'],port=Loginfo['PORT'],db =Loginfo['db'],charset='utf8mb4')
+conn_mssql= pymssql.connect(server = Loginfo2['HOST'] , user = Loginfo2['USER'] , password =Loginfo2['PSWD'], database =Loginfo2['database'],port=Loginfo2['PORT'],charset='utf8')
+
+column_sql="select * from "+table_name+" limit 1"
+cln_sql=conn_mysql.cursor()
+cln_sql.execute(column_sql)                        # 执行SQL查询
+data = cln_sql.fetchall()                   # 查询结果给data
+fields = cln_sql.description                # 获取查询结果中列的字段名
+cln_sql.close()
+remove_cln=remove_column.split(',')
+
+cln_list=[]
+cln_list2=[]
+for i in fields:
+        cflag=0
+        for j in remove_cln:
+                if i[0].lower()==j.lower():
+                        cflag=1
+        if cflag==0:
+                cln_list.append("isnull("+"`"+i[0]+"`"+",'')")
+                cln_list2.append("isnull("+"["+i[0]+"]"+",'')")
+
+
+
+
+cln_list_str=','.join(cln_list)
+cln_list_str2=','.join(cln_list2)
+
+#print cln_list_str
+
+
+
+
+t1 = threading.Thread(target=mysql_conn,args=(minid,maxid))
+t1.start()
+
+t2 =threading.Thread(target=mssql_conn,args=(minid,maxid))
+t2.start()
+
+t3=threading.Thread(target=compare)
+t3.start()
